@@ -1,4 +1,4 @@
-/* VariableBW.h — Serge Variable Bandwidth Filter (+ resonance) for ER-301 v0.1.0
+/* VariableBW.h — Serge Variable Bandwidth Filter (+ resonance) for ER-301 v0.3.0
  *
  * CONCEPT
  * ───────
@@ -27,6 +27,19 @@
  * CONTROLS: Freq (Hz, CV via a pitch map in Lua) · Bandwidth [0,1] ·
  *           Resonance [0,1] · Level [0,2].  Stereo in → stereo out (shared
  *           coefficients, per-channel state).
+ *
+ * STEREO PEAK PHASE (v0.3.0 — stereo-only)
+ * ────────────────────────────────────────
+ * Phase [−1,1] offsets the relative phase of the resonant peaks between L and R.
+ * Each Cytomic SVF exposes its band-pass output v1, which is in QUADRATURE (≈90°)
+ * with the peak at that stage's edge; q = v1(stage L) + v1(stage H) is therefore
+ * the 90° partner of BOTH edges at once (only the matching stage is large at each
+ * edge).  The output becomes  OutL = v2 + w·q,  OutR = v2 − w·q  (w from Phase),
+ * so L and R gain opposite phase at the peaks — up to ±45° each (±90° relative)
+ * at |w| = 1 — swinging the ringing edges across the stereo field.  At w = 0 the
+ * output is bit-identical to before; the mono sum is always 2·v2 (mono-safe).
+ * The Phase inlet is wired only in a STEREO lane (Lua), so a mono lane is
+ * unchanged.  Feed-forward from bounded states → no new stability concern.
  */
 
 #pragma once
@@ -68,6 +81,7 @@ private:
     od::Inlet  mBandwidthIn {"Bandwidth"};  // [0,1] → 0..kMaxBwOct octaves
     od::Inlet  mResonanceIn {"Resonance"};  // [0,1] → edges peak / self-osc
     od::Inlet  mLevelIn     {"Level"};      // [0,2]
+    od::Inlet  mPhaseIn     {"Phase"};      // [-1,1] stereo peak phase (stereo-only)
 
     od::Outlet mOutL {"OutL"};
     od::Outlet mOutR {"OutR"};

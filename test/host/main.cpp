@@ -191,6 +191,35 @@ int main(int argc, char **argv)
         return ok?0:1;
     }
 
+    if (!strcmp(argv[1], "phase")) {
+        // Stereo peak phase: same mono source to L and R, resonant edges ringing.
+        // phase=0 → L==R (identity); |phase|↑ → L/R decorrelate; phase=±1 → ≈90°
+        // relative (correlation → 0).  Finite and bounded throughout.
+        auto meas = [](float w, double &corr, float &peak, long &nf) {
+            VariableBW d; double sLR=0,sLL=0,sRR=0; long n=0; peak=0; nf=0;
+            static uint32_t rng=12321;
+            for (int b=0;b<3000;++b){
+                fill(d.mFreqIn,600.f); fill(d.mBandwidthIn,0.4f);
+                fill(d.mResonanceIn,0.85f); fill(d.mLevelIn,1.0f); fill(d.mPhaseIn,w);
+                for(int s=0;s<FRAMELENGTH;++s){ rng^=rng<<13;rng^=rng>>17;rng^=rng<<5;
+                    float x=0.3f*(float(rng&0xFFFF)/32768.f-1.f); d.mInL.buffer()[s]=x; d.mInR.buffer()[s]=x; }
+                d.process();
+                if(b>1000) for(int s=0;s<FRAMELENGTH;++s){ float L=d.mOutL.buffer()[s],R=d.mOutR.buffer()[s];
+                    if(!std::isfinite(L)||!std::isfinite(R))nf++;
+                    sLR+=double(L)*R; sLL+=double(L)*L; sRR+=double(R)*R;
+                    float a=fabsf(L)>fabsf(R)?fabsf(L):fabsf(R); if(a>peak)peak=a; n++; }
+            }
+            corr = (sLL>0&&sRR>0)? sLR/sqrt(sLL*sRR) : 1.0;
+        };
+        double c0,c5,c1; float p0,p5,p1; long nf0,nf5,nf1;
+        meas(0.0f,c0,p0,nf0); meas(0.5f,c5,p5,nf5); meas(1.0f,c1,p1,nf1);
+        const bool ok = c0>0.999 && c5<0.85 && c5<c0-0.1 && c1<0.2 &&
+                        nf0==0&&nf5==0&&nf1==0 && p0<=1.001f&&p5<=1.001f&&p1<=1.001f;
+        printf("phase: corr @0=%+.3f @0.5=%+.3f @1=%+.3f  peaks=%.3f/%.3f/%.3f  nf=%ld  %s\n",
+               c0,c5,c1,p0,p5,p1,nf0+nf5+nf1, ok?"PASS":"FAIL");
+        return ok?0:1;
+    }
+
     fprintf(stderr, "unknown mode\n");
     return 2;
 }

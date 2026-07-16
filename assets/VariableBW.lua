@@ -21,6 +21,16 @@ local SlopeView = require "varia.SlopeView"
 
 local libvaria = require "varia.libvaria"
 
+-- Center-frequency dial map: 20 Hz … ~20.5 kHz in 1/12-octave steps.  The stock
+-- "oscFreq" map bottoms out near 0.03 Hz, so most of the encoder travel is
+-- sub-audio dead zone; this starts the control right at 20 Hz (audible).
+local function centerFreqMap()
+  local F0, step = 20.0, 1.0 / 12.0
+  local map = app.LUTDialMap(121)                        -- 10 octaves × 12 + 1
+  for i = 0, 120 do map:add(F0 * (2 ^ (i * step))) end   -- 20 Hz → 20480 Hz
+  return map
+end
+
 local VariableBW = Class {}
 VariableBW:include(Unit)
 
@@ -70,6 +80,17 @@ function VariableBW:onLoadGraph(channelCount)
   connect(levelParam, "Out", flt, "Level")
   self:addMonoBranch("level", levelParam, "In", levelParam, "Out")
 
+  -- Phase [-1,1] — STEREO ONLY.  Wired only in a stereo lane; in a mono lane
+  -- the Phase inlet stays unconnected (reads 0), so the sound is unchanged.
+  if channelCount > 1 then
+    local phaseParam = self:addObject("phaseParam", app.GainBias())
+    local phaseRange = self:addObject("phaseRange", app.MinMax())
+    phaseParam:hardSet("Bias", 0.0)
+    connect(phaseParam, "Out", phaseRange, "In")
+    connect(phaseParam, "Out", flt, "Phase")
+    self:addMonoBranch("phase", phaseParam, "In", phaseParam, "Out")
+  end
+
   connect(flt, "OutL", self, "Out1")
   if channelCount > 1 then
     connect(flt, "OutR", self, "Out2")
@@ -85,7 +106,7 @@ function VariableBW:onLoadViews(objects, branches)
     branch      = branches.freq,
     gainbias    = objects.freqParam,
     range       = objects.freqRange,
-    biasMap     = Encoder.getMap("oscFreq"),
+    biasMap     = centerFreqMap(),
     biasUnits   = app.unitHertz,
     initialBias = 500.0,
     gainMap     = Encoder.getMap("freqGain"),
@@ -94,7 +115,7 @@ function VariableBW:onLoadViews(objects, branches)
 
   controls.bw = GainBias {
     button      = "bw",
-    description = "Bandwidth  narrow ‹ › wide",
+    description = "Bandwidth",
     branch      = branches.bw,
     gainbias    = objects.bwParam,
     range       = objects.bwRange,
@@ -105,7 +126,7 @@ function VariableBW:onLoadViews(objects, branches)
 
   controls.res = GainBias {
     button      = "res",
-    description = "Resonance  flat ‹ › self-oscillate (edges)",
+    description = "Resonance",
     branch      = branches.res,
     gainbias    = objects.resParam,
     range       = objects.resRange,
@@ -116,7 +137,7 @@ function VariableBW:onLoadViews(objects, branches)
 
   controls.level = GainBias {
     button      = "level",
-    description = "Output Level (unity = 1)",
+    description = "Unity = 1",
     branch      = branches.level,
     gainbias    = objects.levelParam,
     range       = objects.levelRange,
@@ -132,7 +153,24 @@ function VariableBW:onLoadViews(objects, branches)
     width  = app.SECTION_PLY,
   }
 
-  local views = { expanded = {"slope", "freq", "bw", "res", "level"}, collapsed = {} }
+  local expanded = {"slope", "freq", "bw", "res", "level"}
+
+  -- Phase — stereo-only (phaseParam exists only in a stereo lane).
+  if objects.phaseParam then
+    controls.phase = GainBias {
+      button      = "phase",
+      description = "Stereo Peak Phase",
+      branch      = branches.phase,
+      gainbias    = objects.phaseParam,
+      range       = objects.phaseRange,
+      biasMap     = Encoder.getMap("[-1,1]"),
+      initialBias = 0.0,
+      gainMap     = Encoder.getMap("[-1,1]"),
+    }
+    expanded[#expanded + 1] = "phase"
+  end
+
+  local views = { expanded = expanded, collapsed = {} }
   return controls, views
 end
 

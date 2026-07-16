@@ -30,12 +30,22 @@ function SlopeView:init(args)
     self:addSpotDescriptor{ center = (i - 0.5) * ply }
   end
 
-  -- Sub display: title (no editable parameters).
+  -- Sub display: the variable-bandwidth formula (no editable parameters).
+  -- Band edges straddle the centre frequency f by ±(bw · 6/2) octaves, so the
+  -- pass-band spans 6·bw octaves geometrically centred on f.
   self.subGraphic = app.Graphic(0, 0, 128, 64)
-  local label = app.Label("Varia — filter response", 10)
-  label:fitToText(0)
-  label:setCenter(64, 32)
-  self.subGraphic:addChild(label)
+  local lines = {
+    { "Variable bandwidth",  51 },   -- y descending from the top
+    { "fLo = f · 2^(-3·bw)", 38 },
+    { "fHi = f · 2^(+3·bw)", 25 },
+    { "band = 6·bw octaves", 12 },
+  }
+  for _, ln in ipairs(lines) do
+    local label = app.Label(ln[1], 10)
+    label:fitToText(0)
+    label:setCenter(64, ln[2])
+    self.subGraphic:addChild(label)
+  end
 end
 
 return SlopeView

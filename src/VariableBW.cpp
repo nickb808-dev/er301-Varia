@@ -40,6 +40,7 @@ VariableBW::VariableBW()
     addInput(mBandwidthIn);
     addInput(mResonanceIn);
     addInput(mLevelIn);
+    addInput(mPhaseIn);
     addOutput(mOutL);
     addOutput(mOutR);
     updateCoeffs();
@@ -101,6 +102,11 @@ void VariableBW::process()
     const float lvStep = (level - mLastLevel) * (1.0f / float(N));
     float lv = mLastLevel;
 
+    // Stereo peak phase (stereo-only; inlet unconnected → 0 in a mono lane, so
+    // the output is bit-identical to the no-phase path).  w scales a quadrature
+    // side signal added +/- to L/R → up to +/-45deg each (+/-90deg relative).
+    const float w = clampf(mPhaseIn.buffer()[0], -1.0f, 1.0f);
+
     // Local state copies (register-friendly across the sample loop).
     float ic1Ll = mIc1L_L, ic2Ll = mIc2L_L, ic1Hl = mIc1H_L, ic2Hl = mIc2H_L;
     float ic1Lr = mIc1L_R, ic2Lr = mIc2L_R, ic1Hr = mIc1H_R, ic2Hr = mIc2H_R;
@@ -109,36 +115,38 @@ void VariableBW::process()
         // ── Left channel ──────────────────────────────────────────────────
         {
             const float x = sanitize(inL[s]);
-            // stage L: highpass @ fL
-            float v3 = x - ic2Ll;
-            float v1 = a1L * ic1Ll + a2L * v3;
-            float v2 = ic2Ll + a2L * ic1Ll + a3L * v3;
-            ic1Ll = 2.0f * v1 - ic1Ll;
-            ic2Ll = 2.0f * v2 - ic2Ll;
-            const float hp = x - k * v1 - v2;
-            // stage H: lowpass @ fH, fed the highpass output → bandpass fL..fH
+            // stage L: highpass @ fL.  v1L = band-pass tap (quadrature at fL).
+            float v3  = x - ic2Ll;
+            float v1L = a1L * ic1Ll + a2L * v3;
+            float v2  = ic2Ll + a2L * ic1Ll + a3L * v3;
+            ic1Ll = 2.0f * v1L - ic1Ll;
+            ic2Ll = 2.0f * v2  - ic2Ll;
+            const float hp = x - k * v1L - v2;
+            // stage H: lowpass @ fH.  v1H = band-pass tap (quadrature at fH).
             v3 = hp - ic2Hl;
-            v1 = a1H * ic1Hl + a2H * v3;
+            float v1H = a1H * ic1Hl + a2H * v3;
             v2 = ic2Hl + a2H * ic1Hl + a3H * v3;
-            ic1Hl = 2.0f * v1 - ic1Hl;
-            ic2Hl = 2.0f * v2 - ic2Hl;
-            outL[s] = softLimit(sanitize(v2)) * lv;
+            ic1Hl = 2.0f * v1H - ic1Hl;
+            ic2Hl = 2.0f * v2  - ic2Hl;
+            const float q = v1L + v1H;                  // 90deg partner of both edges
+            outL[s] = softLimit(sanitize(v2 + w * q)) * lv;
         }
         // ── Right channel ─────────────────────────────────────────────────
         {
             const float x = sanitize(inR[s]);
-            float v3 = x - ic2Lr;
-            float v1 = a1L * ic1Lr + a2L * v3;
-            float v2 = ic2Lr + a2L * ic1Lr + a3L * v3;
-            ic1Lr = 2.0f * v1 - ic1Lr;
-            ic2Lr = 2.0f * v2 - ic2Lr;
-            const float hp = x - k * v1 - v2;
+            float v3  = x - ic2Lr;
+            float v1L = a1L * ic1Lr + a2L * v3;
+            float v2  = ic2Lr + a2L * ic1Lr + a3L * v3;
+            ic1Lr = 2.0f * v1L - ic1Lr;
+            ic2Lr = 2.0f * v2  - ic2Lr;
+            const float hp = x - k * v1L - v2;
             v3 = hp - ic2Hr;
-            v1 = a1H * ic1Hr + a2H * v3;
+            float v1H = a1H * ic1Hr + a2H * v3;
             v2 = ic2Hr + a2H * ic1Hr + a3H * v3;
-            ic1Hr = 2.0f * v1 - ic1Hr;
-            ic2Hr = 2.0f * v2 - ic2Hr;
-            outR[s] = softLimit(sanitize(v2)) * lv;
+            ic1Hr = 2.0f * v1H - ic1Hr;
+            ic2Hr = 2.0f * v2  - ic2Hr;
+            const float q = v1L + v1H;
+            outR[s] = softLimit(sanitize(v2 - w * q)) * lv;   // opposite sign → L↔R phase
         }
         lv += lvStep;
     }

@@ -1,8 +1,9 @@
--- toc.lua — package manifest for varia v0.2.0
+-- toc.lua — package manifest for varia v0.3.0
 return {
   name    = "varia",
   title   = "Varia",
-  version = "0.2.0",
+  author  = "nickb808",
+  version = "0.3.0",
   units   = {
     { title = "Varia", moduleName = "VariableBW" },
   },
