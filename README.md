@@ -16,11 +16,11 @@ The classic Serge VCF2 is a flat, non-resonant bandpass with independently
 sweepable low and high edges. Varia keeps that behaviour and adds resonance:
 
 <<<<<<< HEAD
-- **Freq** — centre frequency in Hz. V/oct trackable, so you can play it as a
+- **Freq** — center frequency in Hz. V/oct trackable, so you can play it as a
   pitched voice. The dial starts at **20 Hz** (no sub-audio dead zone).
 - **Bandwidth** — `0` = narrow (tight band) … `1` = wide (~6 octaves). The band
-  edges spread symmetrically around the centre: `fL = f·2^(−3·bw)`,
-  `fH = f·2^(+3·bw)`, geometric centre stays at `f` (the scope shows this formula).
+  edges spread symmetrically around the center: `fL = f·2^(−3·bw)`,
+  `fH = f·2^(+3·bw)`, geometric center stays at `f` (the scope shows this formula).
 =======
 - **Freq** — center frequency in Hz. V/oct trackable (`oscFreq` map + octave
   scaling), so you can play it as a pitched voice.
@@ -34,7 +34,7 @@ sweepable low and high edges. Varia keeps that behaviour and adds resonance:
   self-oscillates (playable as a sine voice), held bounded by a soft-limiter.
 - **Phase** *(stereo lanes only)* — `[−1, 1]` offsets the relative phase of the
   resonant peaks between L and R, swinging the ringing edges across the stereo
-  field (up to ±90° at the extremes). `0` = centred/mono-safe; the control only
+  field (up to ±90° at the extremes). `0` = centerd/mono-safe; the control only
   appears in a stereo lane, so mono behaviour is unchanged. See below.
 - **Level** — output gain (unity = 1).
 
