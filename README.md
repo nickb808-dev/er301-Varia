@@ -1,8 +1,7 @@
 # Varia — Variable Bandwidth Filter
 
-A resonant take on the **Serge Variable Bandwidth Filter (VCF2)** for the
-[ER-301 Sound Computer](https://www.orthogonaldevices.com/er-301). A bandpass
-whose **centre frequency** and **bandwidth** are independently voltage-controllable,
+A resonant take on the Serge Variable Bandwidth Filter (VCF2). A bandpass
+whose **center frequency** and **bandwidth** are independently voltage-controllable,
 with an added **resonance** that emphasises the two band edges and, at the top of
 its range, self-oscillates. Stereo in, stereo out.
 
@@ -16,11 +15,19 @@ internal C++ namespace: `vbf`.
 The classic Serge VCF2 is a flat, non-resonant bandpass with independently
 sweepable low and high edges. Varia keeps that behaviour and adds resonance:
 
+<<<<<<< HEAD
 - **Freq** — centre frequency in Hz. V/oct trackable, so you can play it as a
   pitched voice. The dial starts at **20 Hz** (no sub-audio dead zone).
 - **Bandwidth** — `0` = narrow (tight band) … `1` = wide (~6 octaves). The band
   edges spread symmetrically around the centre: `fL = f·2^(−3·bw)`,
   `fH = f·2^(+3·bw)`, geometric centre stays at `f` (the scope shows this formula).
+=======
+- **Freq** — center frequency in Hz. V/oct trackable (`oscFreq` map + octave
+  scaling), so you can play it as a pitched voice.
+- **Bandwidth** — `0` = narrow (tight band) … `1` = wide (~6 octaves). The band
+  edges spread symmetrically around the center: `fL = fc·2^(−bw·3)`,
+  `fH = fc·2^(+bw·3)`, geometric center stays at `fc`.
+>>>>>>> 9a6f575aae3efeca01d7a21ae5ecc2cf3f977f7b
 - **Resonance** — `0` = flat/gentle … `1` = self-oscillation. As resonance rises,
   a peak grows at **each** band edge; as bandwidth narrows the two peaks merge
   into one tall high-Q peak. At the very top the filter runs undamped and
@@ -128,7 +135,7 @@ on the emulator/hardware, but the sampled magnitude is host-testable):
 ```bash
 g++ -std=c++17 -O2 -ffast-math -Dprivate=public -Itest/host -Isrc \
     src/VariableBW.cpp test/host/main.cpp -o t
-./t curve      # curve band-limited, centred at √(fL·fH), dual edges, finite
+./t curve      # curve band-limited, centerd at √(fL·fH), dual edges, finite
 ./t center     # peak tracks Freq
 ./t width      # −3 dB bandwidth grows with Bandwidth
 ./t reson      # edge peak grows; res=1 self-oscillates (bounded)
