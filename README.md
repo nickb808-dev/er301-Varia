@@ -1,6 +1,6 @@
 # Varia — Variable Bandwidth Filter
 
-A resonant take on the **Serge Variable Bandwidth Filter (VCF2). A bandpass
+A resonant take on the Serge Variable Bandwidth Filter (VCF2). A bandpass
 whose **centre frequency** and **bandwidth** are independently voltage-controllable,
 with an added **resonance** that emphasises the two band edges and, at the top of
 its range, self-oscillates. Stereo in, stereo out.
