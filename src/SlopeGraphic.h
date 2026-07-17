@@ -123,6 +123,33 @@ namespace vbf
         int xL = freqToX(w, fL), xH = freqToX(w, fH);
         addPix(w, h, xL, 0, 6); addPix(w, h, xL, 1, 4);
         addPix(w, h, xH, 0, 6); addPix(w, h, xH, 1, 4);
+
+        // Stereo peak phase: a short horizontal "flag" off each edge crest —
+        // length grows with |phase|, pointing right (+) / left (−) — the L/R
+        // spread of that peak.  Sits at the crest height so it reads at any
+        // resonance.  At phase 0 (or a mono lane) nothing is drawn.
+        const float ph  = mpFilter->getPhase();          // [-1,1]
+        const float aph = ph < 0.0f ? -ph : ph;
+        if (aph > 0.02f)
+        {
+          const int dir = ph > 0.0f ? 1 : -1;
+          const int len = (int)(aph * 8.0f + 0.5f);       // up to ~8 px
+          for (int e = 0; e < 2; e++)
+          {
+            const float fe = (e == 0) ? fL : fH;
+            float m = varBpMag(fe, fL, fH, k);
+            if (!(m == m)) m = 0.0f;
+            const float db = 8.68589f * logf(m > 1e-4f ? m : 1e-4f);
+            float t = (db - kDbMin) * kDbToPx;
+            if (t < 0.0f) t = 0.0f; else if (t > 1.0f) t = 1.0f;
+            const int xc = freqToX(w, fe);
+            const int yc = (int)(t * (h - 1) + 0.5f);
+            for (int j = 1; j <= len; j++) {
+              addPix(w, h, xc + j * dir, yc,     10);      // flag (2 px tall)
+              addPix(w, h, xc + j * dir, yc - 1,  5);
+            }
+          }
+        }
       }
 
       // Background + phosphor render (monochrome; v is the 4-bit intensity).

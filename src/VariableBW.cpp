@@ -106,6 +106,7 @@ void VariableBW::process()
     // the output is bit-identical to the no-phase path).  w scales a quadrature
     // side signal added +/- to L/R → up to +/-45deg each (+/-90deg relative).
     const float w = clampf(mPhaseIn.buffer()[0], -1.0f, 1.0f);
+    mPhase = w;                                   // expose to the slope graphic
 
     // Local state copies (register-friendly across the sample loop).
     float ic1Ll = mIc1L_L, ic2Ll = mIc2L_L, ic1Hl = mIc1H_L, ic2Hl = mIc2H_L;

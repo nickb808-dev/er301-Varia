@@ -70,9 +70,10 @@ public:
     void process() override;
 
     // Live state for the slope graphic (read each UI frame).
-    float getFL() const { return mFL; }
-    float getFH() const { return mFH; }
-    float getK()  const { return mK;  }
+    float getFL()    const { return mFL; }
+    float getFH()    const { return mFH; }
+    float getK()     const { return mK;  }
+    float getPhase() const { return mPhase; }   // [-1,1] stereo peak phase
 
 private:
     od::Inlet  mInL   {"InL"};
@@ -91,6 +92,7 @@ private:
     float mA1H = 0, mA2H = 0, mA3H = 0;     // stage H (lowpass  @ fH)
     float mK = 1.0f;                        // damping (1/Q)
     float mFL = 500.0f, mFH = 500.0f;       // current band edges (Hz) — for the graphic
+    float mPhase = 0.0f;                    // last stereo phase amount — for the graphic
 
     // SVF state, per channel (two series stages each).
     float mIc1L_L = 0, mIc2L_L = 0, mIc1H_L = 0, mIc2H_L = 0;   // left channel
