@@ -16,16 +16,31 @@ internal C++ namespace: `vbf`.
 The classic Serge VCF2 is a flat, non-resonant bandpass with independently
 sweepable low and high edges. Varia keeps that behaviour and adds resonance:
 
-- **Freq** — centre frequency in Hz. V/oct trackable (`oscFreq` map + octave
-  scaling), so you can play it as a pitched voice.
+- **Freq** — centre frequency in Hz. V/oct trackable, so you can play it as a
+  pitched voice. The dial starts at **20 Hz** (no sub-audio dead zone).
 - **Bandwidth** — `0` = narrow (tight band) … `1` = wide (~6 octaves). The band
-  edges spread symmetrically around the centre: `fL = fc·2^(−bw·3)`,
-  `fH = fc·2^(+bw·3)`, geometric centre stays at `fc`.
+  edges spread symmetrically around the centre: `fL = f·2^(−3·bw)`,
+  `fH = f·2^(+3·bw)`, geometric centre stays at `f` (the scope shows this formula).
 - **Resonance** — `0` = flat/gentle … `1` = self-oscillation. As resonance rises,
   a peak grows at **each** band edge; as bandwidth narrows the two peaks merge
   into one tall high-Q peak. At the very top the filter runs undamped and
   self-oscillates (playable as a sine voice), held bounded by a soft-limiter.
+- **Phase** *(stereo lanes only)* — `[−1, 1]` offsets the relative phase of the
+  resonant peaks between L and R, swinging the ringing edges across the stereo
+  field (up to ±90° at the extremes). `0` = centred/mono-safe; the control only
+  appears in a stereo lane, so mono behaviour is unchanged. See below.
 - **Level** — output gain (unity = 1).
+
+### Stereo peak phase
+
+In a stereo lane, **Phase** turns the resonance into stereo motion. Each Cytomic
+SVF exposes a band-pass tap that is the ~90° quadrature of its edge, so
+`q = v1(stage L) + v1(stage H)` is the quadrature of *both* peaks at once; the
+output becomes `OutL = v2 + w·q`, `OutR = v2 − w·q`. At `|w| = 1` the two channels
+sit 90° apart at the peaks (correlation → 0 = full width); the sign picks the
+direction. The mono sum stays `2·v2`, so it's mono-compatible, and `w = 0` is
+bit-identical to no phase. The slope scope grows a little flag off each peak that
+leans with the phase.
 
 ### Live filter-slope scope
 
@@ -75,7 +90,7 @@ Both input and output are NaN/Inf sanitised, and the output soft-limiter
 variable-bw/  (package name: varia)
   Makefile / Dockerfile
   src/
-    VariableBW.h / .cpp   od::Object — 6 inlets, stereo; series HP→LP + resonance
+    VariableBW.h / .cpp   od::Object — 7 inlets, stereo; series HP→LP + resonance + phase
     svf_math.h            libm-free sin/cos/tan/exp2 (variable cutoff, am335x-safe)
     filter_response.h     analytic varBpMag(f, fL, fH, k) for the scope (sqrtf only)
     SlopeGraphic.h        header-only phosphor slope scope (Dirac-style)
@@ -83,7 +98,7 @@ variable-bw/  (package name: varia)
     compat.cpp / compat_swig.h
   assets/
     toc.lua               package manifest
-    VariableBW.lua        unit wrapper (slope + Freq/Bandwidth/Resonance/Level)
+    VariableBW.lua        unit wrapper (slope + Freq/Bandwidth/Resonance/Phase/Level)
     SlopeView.lua         display-only ViewControl hosting the slope scope
   test/host/              host simulation harness + od stubs
 ```
@@ -99,7 +114,7 @@ Requires the ER-301 SDK and Docker (cross-compiles to am335x). From the
 make docker-image                     # first time only (shared image)
 make swig-docker  ER301_SDK=~/er-301  # generate the SWIG Lua wrapper
 make docker-build ER301_SDK=~/er-301  # cross-compile the .so
-make pkg                              # → build/am335x/varia-0.2.0.pkg
+make pkg                              # → build/am335x/varia-0.3.0.pkg
 ```
 
 Copy the resulting `.pkg` to the ER-301's SD card (`ER-301/packages/`) and load
@@ -117,7 +132,8 @@ g++ -std=c++17 -O2 -ffast-math -Dprivate=public -Itest/host -Isrc \
 ./t center     # peak tracks Freq
 ./t width      # −3 dB bandwidth grows with Bandwidth
 ./t reson      # edge peak grows; res=1 self-oscillates (bounded)
-./t stereo     # L/R bit-identical
+./t stereo     # L/R bit-identical (phase = 0)
+./t phase      # stereo phase decorrelates L/R (corr 1 → 0 at ±1); bounded
 ./t stab       # sweep + full res + wide + noise → finite, bounded
 ./t nan        # NaN input → finite output
 ```
@@ -126,9 +142,9 @@ g++ -std=c++17 -O2 -ffast-math -Dprivate=public -Itest/host -Isrc \
 
 ## Status
 
-**v0.2.0** — host-verified. Pending: on-device confirmation of the slope scope
-(the curve math is verified; the pixels only run on emulator/hardware) and a
-hardware pass on V/oct tracking, the bandwidth sweep, and self-oscillation feel.
+**v0.3.0** — host-verified and running on hardware. Freq / Bandwidth / Resonance,
+the slope scope (with the bandwidth formula and phase flags), the 20 Hz dial, and
+the stereo peak-Phase control are all in place.
 
 ## Credits
 
