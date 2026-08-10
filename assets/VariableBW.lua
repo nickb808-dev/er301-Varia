@@ -7,7 +7,9 @@
 -- range, self-oscillates.  Stereo in → stereo out.
 --
 -- CONTROLS
---   freq   center frequency (V/oct trackable)
+--   freq   center frequency, LINEAR Hz
+--   voct   center frequency, EXPONENTIAL (1V/oct) — use this for pitch CV
+--   peaks  number of resonant peaks across the band, 2 … 7, continuous
 --   bw     bandwidth  0 = narrow (tight band) … 1 = wide (~6 octaves)
 --   res    resonance  0 = flat/gentle … 1 = self-oscillation at the edges
 --   level  output gain (unity = 1)
@@ -16,6 +18,7 @@ local app      = app
 local Class    = Class or require "Base.Class"
 local Unit     = require "Unit"
 local GainBias = require "Unit.ViewControl.GainBias"
+local Pitch    = require "Unit.ViewControl.Pitch"
 local Encoder  = require "Encoder"
 local SlopeView = require "varia.SlopeView"
 
@@ -48,13 +51,42 @@ function VariableBW:onLoadGraph(channelCount)
     connect(self, "In2", flt, "InR")
   end
 
-  -- Freq — center frequency in Hz, V/oct trackable.
+  -- Freq — center frequency in LINEAR Hz. (This used to claim "V/oct
+  -- trackable"; it was not, and that mismatch is the bug this version fixes.
+  -- Pitch CV belongs on the V/oct branch below.)
   local freqParam = self:addObject("freqParam", app.GainBias())
   local freqRange = self:addObject("freqRange", app.MinMax())
   freqParam:hardSet("Bias", 500.0)
   connect(freqParam, "Out", freqRange, "In")
   connect(freqParam, "Out", flt, "Freq")
   self:addMonoBranch("freq", freqParam, "In", freqParam, "Out")
+
+  -- V/OCT — EXPONENTIAL centre-frequency CV (v0.3.1).
+  --
+  -- `freq` above is a LINEAR-Hz sum, and that is why a sine modulator on it
+  -- sounded like a saw: pitch is logarithmic, so a symmetric +/-300 Hz swing
+  -- around 500 Hz is 0.68 octaves up but 1.32 down. Patch pitch-like CV here
+  -- instead and a sine is symmetric in octaves, as it should be.
+  --
+  -- ConstantOffset + Pitch view control is the firmware's own idiom for a
+  -- 1V/oct port (SingleCycle, Landau). Unconnected reads zero -> 2^0 = 1 ->
+  -- bit-identical to v0.3.0.
+  local voct      = self:addObject("voct",      app.ConstantOffset())
+  local voctRange = self:addObject("voctRange", app.MinMax())
+  connect(voct, "Out", voctRange, "In")
+  connect(voct, "Out", flt, "V/Oct")
+  self:addMonoBranch("voct", voct, "In", voct, "Out")
+
+  -- PEAKS — how many resonant peaks span the band (v0.4.0).
+  -- 0 = the two band edges (unchanged, and free); 1 = seven peaks at equal
+  -- musical intervals between them. Continuous: a new peak buds off the upper
+  -- edge and slides down as the whole set redistributes.
+  local peaksParam = self:addObject("peaksParam", app.GainBias())
+  local peaksRange = self:addObject("peaksRange", app.MinMax())
+  peaksParam:hardSet("Bias", 0.0)
+  connect(peaksParam, "Out", peaksRange, "In")
+  connect(peaksParam, "Out", flt, "Peaks")
+  self:addMonoBranch("peaks", peaksParam, "In", peaksParam, "Out")
 
   -- Bandwidth [0,1].
   local bwParam = self:addObject("bwParam", app.GainBias())
@@ -153,7 +185,25 @@ function VariableBW:onLoadViews(objects, branches)
     width  = app.SECTION_PLY,
   }
 
-  local expanded = {"slope", "freq", "bw", "res", "level"}
+  controls.voct = Pitch {
+    button      = "V/oct",
+    description = "1V/oct centre frequency",
+    branch      = branches.voct,
+    offset      = objects.voct,
+    range       = objects.voctRange,
+  }
+
+  controls.peaks = GainBias {
+    button      = "peaks",
+    description = "Resonant peaks (2 … 7, geometric)",
+    branch      = branches.peaks,
+    gainbias    = objects.peaksParam,
+    range       = objects.peaksRange,
+    biasMap     = Encoder.getMap("[0,1]"),
+    initialBias = 0.0,
+  }
+
+  local expanded = {"slope", "freq", "voct", "bw", "res", "peaks", "level"}
 
   -- Phase — stereo-only (phaseParam exists only in a stereo lane).
   if objects.phaseParam then

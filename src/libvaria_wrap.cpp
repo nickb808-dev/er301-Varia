@@ -2796,6 +2796,15 @@ static int _wrap_kQmax_get(lua_State* L) { int SWIG_arg = 0; float result; SWIG_
 static int _wrap_kResSpan_get(lua_State* L) { int SWIG_arg = 0; float result; SWIG_check_num_args("vbf::kResSpan",0,0)
   result = (float)vbf::kResSpan; lua_pushnumber(L, (lua_Number) result); SWIG_arg++; return SWIG_arg; if(0) SWIG_fail; fail:
   lua_error(L); return SWIG_arg; }
+static int _wrap_kMaxPeaks_get(lua_State* L) { int SWIG_arg = 0; int result; SWIG_check_num_args("vbf::kMaxPeaks",0,0)
+  result = (int)vbf::kMaxPeaks; lua_pushinteger(L, (lua_Integer) result); SWIG_arg++; return SWIG_arg; if(0) SWIG_fail; fail:
+  lua_error(L); return SWIG_arg; }
+static int _wrap_kMaxInner_get(lua_State* L) { int SWIG_arg = 0; int result; SWIG_check_num_args("vbf::kMaxInner",0,0)
+  result = (int)vbf::kMaxInner; lua_pushinteger(L, (lua_Integer) result); SWIG_arg++; return SWIG_arg; if(0) SWIG_fail; fail:
+  lua_error(L); return SWIG_arg; }
+static int _wrap_kVoctOctaves_get(lua_State* L) { int SWIG_arg = 0; float result; SWIG_check_num_args("vbf::kVoctOctaves",0,0)
+  result = (float)vbf::kVoctOctaves; lua_pushnumber(L, (lua_Number) result); SWIG_arg++; return SWIG_arg; if(0) SWIG_fail; fail:
+  lua_error(L); return SWIG_arg; }
 static int _wrap_kFcMin_get(lua_State* L) { int SWIG_arg = 0; float result; SWIG_check_num_args("vbf::kFcMin",0,0)
   result = (float)vbf::kFcMin; lua_pushnumber(L, (lua_Number) result); SWIG_arg++; return SWIG_arg; if(0) SWIG_fail; fail:
   lua_error(L); return SWIG_arg; }
@@ -2939,6 +2948,9 @@ static swig_lua_attribute swig_SwigModule_attributes[] = {
     { "kQmin", _wrap_kQmin_get, SWIG_Lua_set_immutable },
     { "kQmax", _wrap_kQmax_get, SWIG_Lua_set_immutable },
     { "kResSpan", _wrap_kResSpan_get, SWIG_Lua_set_immutable },
+    { "kMaxPeaks", _wrap_kMaxPeaks_get, SWIG_Lua_set_immutable },
+    { "kMaxInner", _wrap_kMaxInner_get, SWIG_Lua_set_immutable },
+    { "kVoctOctaves", _wrap_kVoctOctaves_get, SWIG_Lua_set_immutable },
     { "kFcMin", _wrap_kFcMin_get, SWIG_Lua_set_immutable },
     { "kFcMax", _wrap_kFcMax_get, SWIG_Lua_set_immutable },
     { "kEdgeMax", _wrap_kEdgeMax_get, SWIG_Lua_set_immutable },

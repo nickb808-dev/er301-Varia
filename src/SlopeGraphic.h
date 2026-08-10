@@ -10,6 +10,10 @@
 // buffer as a CLASS MEMBER (never a stack array — Cortex-A8 :64 trap), fade −1
 // per frame, additive hits, monochrome fb.fill(BLACK) + fb.pixel render.
 //
+// v0.4.0: the curve is varBpMagN — the series band PLUS the parallel PEAKS
+// resonators — so the display shows every peak the filter is producing, and
+// interior ticks fade in with their peak's gain.
+//
 // am335x TRIG: the curve uses varBpMag (mults/divs/sqrtf) and pexp2 for the
 // log-frequency axis — NO sinf/cosf.  logf (for the dB axis and edge ticks) is
 // allowed on am335x (only package sinf/cosf miscompute; see the trig note).
@@ -97,6 +101,13 @@ namespace vbf
         const float fL = mpFilter->getFL();
         const float fH = mpFilter->getFH();
         const float k  = mpFilter->getK();
+        // PEAKS bank (v0.4.0). n = 0 when the dial is down, in which case
+        // varBpMagN reduces to varBpMag * 1.0 and the curve is unchanged.
+        const int   nIn  = mpFilter->getInnerCount();
+        const float kIn  = mpFilter->getInnerK();
+        const float nrm  = mpFilter->getInnerNorm();
+        const float *inHz = mpFilter->innerHzPtr();
+        const float *inG  = mpFilter->innerGainPtr();
 
         // Rasterise the response curve into the phosphor buffer, connecting
         // consecutive columns so steep resonant edges stay continuous.
@@ -104,7 +115,7 @@ namespace vbf
         for (int x = 0; x < w; x++)
         {
           const float f  = kFMin * vbfmath::pexp2(kLogSpan * (float)x / (float)(w - 1));
-          float m = varBpMag(f, fL, fH, k);
+          float m = varBpMagN(f, fL, fH, k, inHz, inG, nIn, kIn, nrm);
           if (!(m == m)) m = 0.0f;                          // NaN guard
           const float db = 8.68589f * logf(m > 1e-4f ? m : 1e-4f);  // 20·log10
           float t = (db - kDbMin) * kDbToPx;
@@ -124,6 +135,21 @@ namespace vbf
         addPix(w, h, xL, 0, 6); addPix(w, h, xL, 1, 4);
         addPix(w, h, xH, 0, 6); addPix(w, h, xH, 1, 4);
 
+        // Interior PEAKS get their own ticks, ONE row tall and brightness
+        // scaled by the peak's gain — so the newest peak fades IN on the
+        // display exactly as it fades in in the audio, and you can see where
+        // the next one is arriving from before you can really hear it. The
+        // edges stay two rows tall so the band boundaries still read as the
+        // outer limits rather than as two more members of the set.
+        for (int i = 0; i < nIn; i++)
+        {
+          const float g = inG[i];
+          if (g <= 0.001f) continue;
+          int amt = (int)(g * 7.0f + 0.5f);
+          if (amt < 1) amt = 1;
+          addPix(w, h, freqToX(w, inHz[i]), 0, amt);
+        }
+
         // Stereo peak phase: a short horizontal "flag" off each edge crest —
         // length grows with |phase|, pointing right (+) / left (−) — the L/R
         // spread of that peak.  Sits at the crest height so it reads at any
@@ -137,7 +163,7 @@ namespace vbf
           for (int e = 0; e < 2; e++)
           {
             const float fe = (e == 0) ? fL : fH;
-            float m = varBpMag(fe, fL, fH, k);
+            float m = varBpMagN(fe, fL, fH, k, inHz, inG, nIn, kIn, nrm);
             if (!(m == m)) m = 0.0f;
             const float db = 8.68589f * logf(m > 1e-4f ? m : 1e-4f);
             float t = (db - kDbMin) * kDbToPx;

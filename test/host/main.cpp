@@ -44,6 +44,58 @@ static void measure(float fc, float bw, float res, int L, std::vector<double> &H
         H[size_t(k)] = 20.0 * log10(m > 1e-12 ? m : 1e-12);
     }
 }
+static void measureVoct(float fc, float bw, float res, float voct, int L,
+                        std::vector<double> &H)
+{
+    VariableBW d; const float A = 0.001f;
+    std::vector<float> ir(size_t(L), 0.0f);
+    int got = 0; long blk = 0;
+    while (got < L) {
+        fill(d.mFreqIn, fc); fill(d.mBandwidthIn, bw); fill(d.mResonanceIn, res);
+        fill(d.mLevelIn, 1.0f); fill(d.mVoctIn, voct);
+        for (int s = 0; s < FRAMELENGTH; ++s) {
+            d.mInL.buffer()[s] = (blk==0&&s==0)?A:0.0f; d.mInR.buffer()[s]=0.0f;
+        }
+        d.process();
+        for (int s = 0; s < FRAMELENGTH && got < L; ++s) ir[got++] = d.mOutL.buffer()[s];
+        ++blk;
+    }
+    handle_rfft_t fft = RFFT_allocate(L);
+    std::vector<complex_float_t> spec(size_t(L / 2 + 1));
+    RFFT_forward(spec.data(), ir.data(), fft);
+    RFFT_destroy(fft);
+    H.assign(size_t(L / 2 + 1), -200.0);
+    for (int k = 0; k <= L / 2; ++k) {
+        const double m = sqrt(double(spec[k].r)*spec[k].r + double(spec[k].i)*spec[k].i) / A;
+        H[size_t(k)] = 20.0 * log10(m > 1e-12 ? m : 1e-12);
+    }
+}
+static void measurePeaks(float fc, float bw, float res, float peaks, int L,
+                         std::vector<double> &H)
+{
+    VariableBW d; const float A = 0.001f;
+    std::vector<float> ir(size_t(L), 0.0f);
+    int got = 0; long blk = 0;
+    while (got < L) {
+        fill(d.mFreqIn, fc); fill(d.mBandwidthIn, bw); fill(d.mResonanceIn, res);
+        fill(d.mLevelIn, 1.0f); fill(d.mPeaksIn, peaks);
+        for (int s = 0; s < FRAMELENGTH; ++s) {
+            d.mInL.buffer()[s] = (blk==0&&s==0)?A:0.0f; d.mInR.buffer()[s]=0.0f;
+        }
+        d.process();
+        for (int s = 0; s < FRAMELENGTH && got < L; ++s) ir[got++] = d.mOutL.buffer()[s];
+        ++blk;
+    }
+    handle_rfft_t fft = RFFT_allocate(L);
+    std::vector<complex_float_t> spec(size_t(L / 2 + 1));
+    RFFT_forward(spec.data(), ir.data(), fft);
+    RFFT_destroy(fft);
+    H.assign(size_t(L / 2 + 1), -200.0);
+    for (int k = 0; k <= L / 2; ++k) {
+        const double m = sqrt(double(spec[k].r)*spec[k].r + double(spec[k].i)*spec[k].i) / A;
+        H[size_t(k)] = 20.0 * log10(m > 1e-12 ? m : 1e-12);
+    }
+}
 static double binHz(int k, int L) { return double(k) * kSampleRate / double(L); }
 static void analyze(const std::vector<double> &H, int L, double &pkHz, double &pkDb, double &loHz, double &hiHz)
 {
@@ -187,8 +239,219 @@ int main(int argc, char **argv)
                    "outside(%.3f/%.3f)  bandlim=%d edges=%d nf=%ld %s\n",
                    res, fL, fH, k, mL, mC, mH, below, above, bandlimited?1:0, edges?1:0, nf, good?"":"(off)");
         }
-        printf("  %s\n", ok?"PASS (curve band-limited, centred, dual edges, finite)":"FAIL");
+        // ── the DRAWN curve must show the PEAKS bank (v0.4.0) ────────────
+        // The graphic renders varBpMagN. Its job is to put peaks where the
+        // filter really has them, so compare the analytic model's maxima
+        // against the MEASURED FFT maxima, in Hz.
+        {
+            const float fc = 1000.f, bw = 0.8f, res = 0.75f;
+            VariableBW d;
+            fill(d.mFreqIn, fc); fill(d.mBandwidthIn, bw);
+            fill(d.mResonanceIn, res); fill(d.mLevelIn, 1.0f); fill(d.mPeaksIn, 1.0f);
+            for (int s = 0; s < FRAMELENGTH; ++s) { d.mInL.buffer()[s]=0; d.mInR.buffer()[s]=0; }
+            d.process();
+            const float fL = d.getFL(), fH = d.getFH(), k = d.getK();
+            const int   n  = d.getInnerCount();
+
+            // maxima of the ANALYTIC curve the graphic draws
+            std::vector<double> mf;
+            double pm = -1, pf = 0; bool rising = false;
+            for (double f = 20; f < 20000; f *= 1.002) {
+                const double m = varBpMagN((float)f, fL, fH, k, d.innerHzPtr(),
+                                           d.innerGainPtr(), n, d.getInnerK(),
+                                           d.getInnerNorm());
+                if (m > pm) rising = true;
+                else if (rising) { mf.push_back(pf); rising = false; }
+                pm = m; pf = f;
+            }
+            printf("curve+peaks: model maxima (%d):", (int)mf.size());
+            for (double f : mf) printf(" %.0f", f);
+            printf("\n             engine peaks : %.0f", fL);
+            for (int i = 0; i < n; ++i) printf(" %.0f", d.getInnerHz(i));
+            printf(" %.0f\n", fH);
+
+            // every engine peak must have a model maximum within 1/6 octave
+            int missed = 0;
+            auto near = [&](double want) {
+                for (double f : mf) if (fabs(log2(f / want)) < 0.167) return true;
+                return false;
+            };
+            if (!near(fL)) missed++;
+            if (!near(fH)) missed++;
+            for (int i = 0; i < n; ++i) if (!near(d.getInnerHz(i))) missed++;
+            if (missed) { printf("  FAIL: %d engine peak(s) not drawn\n", missed); ok = false; }
+            if (n != 5) { printf("  FAIL: expected 5 interior peaks at dial 1\n"); ok = false; }
+        }
+
+        printf("  %s\n", ok?"PASS (curve band-limited, centred, dual edges, peaks drawn, finite)":"FAIL");
         return ok?0:1;
+    }
+
+    // ── voct: exponential CV must be SYMMETRIC IN OCTAVES ────────────────
+    // This is the fix for "a sine modulator sounds like a saw". Linear-Hz CV
+    // is symmetric in Hz and therefore lopsided in octaves; V/oct must be the
+    // other way round. Measured on the actual peak, not asserted.
+    if (!strcmp(argv[1], "voct")) {
+        int bad = 0;
+        const int L = 1 << 15;
+        std::vector<double> H;
+        double pk, db, lo, hi;
+
+        // 1. BYPASS: voct = 0 must leave the peak exactly where Freq puts it.
+        // Narrow band + low resonance: the response is ONE rounded peak at
+        // the geometric centre, so argmax == fc. (My first draft used
+        // bw=0.3/res=0.5, where the two resonant EDGES are the peaks — it was
+        // measuring fL = 268 Hz and calling it the centre.)
+        measure(500.0f, 0.1f, 0.05f, L, H); analyze(H, L, pk, db, lo, hi);
+        const double base = pk;
+        printf("  voct=0 peak %.1f Hz (Freq = 500)\n", base);
+        if (fabs(base - 500.0) / 500.0 > 0.05) {
+            printf("  FAIL: bypass peak is not at Freq\n"); bad++;
+        }
+
+        // 2. SYMMETRY: +/-d volts must move the peak +/- the same octaves.
+        printf("  %-8s %-10s %-10s %-8s %-8s\n", "volts", "peak Hz", "octaves", "|up|", "|down|");
+        for (double d : {0.05, 0.1, 0.2}) {
+            double up, dn;
+            {
+                std::vector<double> Hu; VariableBW dummy;
+                // re-measure with voct applied
+                measureVoct(500.0f, 0.1f, 0.05f, float(d), L, Hu);
+                analyze(Hu, L, pk, db, lo, hi); up = log2(pk / base);
+                printf("  %+8.2f %-10.1f %-10.3f\n", d, pk, up);
+            }
+            {
+                std::vector<double> Hd;
+                measureVoct(500.0f, 0.1f, 0.05f, float(-d), L, Hd);
+                analyze(Hd, L, pk, db, lo, hi); dn = log2(base / pk);
+                printf("  %+8.2f %-10.1f %-10.3f  |up| %.3f |down| %.3f\n",
+                       -d, pk, -dn, up, dn);
+            }
+            // The whole point: these must match. Linear-Hz CV at the same
+            // depth differs by 2x and more (see memory.md).
+            if (fabs(up - dn) > 0.05) {
+                printf("  FAIL: asymmetric in octaves (%.3f vs %.3f)\n", up, dn); bad++;
+            }
+            const double want = d * kVoctOctaves;
+            if (fabs(up - want) > 0.08) {
+                printf("  FAIL: %.2f V should be %.2f oct, got %.3f\n", d, want, up); bad++;
+            }
+        }
+        printf("voct: %s (%d issues)\n", bad ? "FAIL" : "PASS", bad);
+        return bad ? 1 : 0;
+    }
+
+    // ── peaks: the Peaks control must produce N resonant peaks ────────────
+    // Counts real local maxima in the measured magnitude response. Not "the
+    // code sets N coefficients" — the spectrum must actually have N humps.
+    if (!strcmp(argv[1], "peaks")) {
+        int bad = 0;
+        const int L = 1 << 15;
+        // Wide band + decent resonance so interior peaks are resolvable.
+        const float fc = 1000.0f, bw = 0.8f, res = 0.75f;
+
+        // Count peaks by PROMINENCE, not by "H[k] > both neighbours". A flat
+        // resonant passband has micro-ripple, and the naive test counted a
+        // 0.3 dB wobble at the band centre as a third peak when Peaks was OFF.
+        // Prominence = how far a maximum stands above the higher of the two
+        // valleys flanking it; a real resonance clears several dB.
+        auto countPeaks = [&](float pk, std::vector<double> &freqs) {
+            std::vector<double> H;
+            measurePeaks(fc, bw, res, pk, L, H);
+            freqs.clear();
+            const int k0 = 1, k1 = L / 2 - 1;
+            const double kMinProm = 3.0;            // dB
+            for (int k = k0 + 1; k < k1; ++k) {
+                if (!(H[k] > H[k-1] && H[k] >= H[k+1])) continue;
+                if (H[k] < -40.0) continue;
+                // walk out to the flanking valleys (stop at a higher peak)
+                double lv = H[k];
+                for (int q = k - 1; q >= k0; --q) {
+                    if (H[q] > H[k]) break;
+                    lv = std::min(lv, H[q]);
+                }
+                double rv = H[k];
+                for (int q = k + 1; q <= k1; ++q) {
+                    if (H[q] > H[k]) break;
+                    rv = std::min(rv, H[q]);
+                }
+                if (H[k] - std::max(lv, rv) >= kMinProm) freqs.push_back(binHz(k, L));
+            }
+            std::vector<double> merged;                 // one hump, many bins
+            for (double f : freqs) {
+                if (merged.empty() || f / merged.back() > 1.122) merged.push_back(f);
+                else merged.back() = f;
+            }
+            freqs = merged;
+            return int(freqs.size());
+        };
+
+        printf("  Peaks dial -> peaks found (fc=%.0f bw=%.1f res=%.2f)\n", fc, bw, res);
+        for (int want = 2; want <= 7; ++want) {
+            const float dial = float(want - 2) / float(kMaxPeaks - 2);
+            std::vector<double> f;
+            const int got = countPeaks(dial, f);
+            printf("    dial %.2f -> want %d, got %d  [", dial, want, got);
+            for (size_t i = 0; i < f.size(); ++i) printf("%s%.0f", i ? " " : "", f[i]);
+            printf("]\n");
+            if (got != want) { printf("      FAIL: wrong peak count\n"); bad++; }
+            // geometric spacing: successive ratios must match
+            if (f.size() >= 3) {
+                double r0 = f[1] / f[0], worst = 0;
+                for (size_t i = 1; i + 1 < f.size(); ++i)
+                    worst = std::max(worst, fabs(log2(f[i+1] / f[i]) - log2(r0)));
+                if (worst > 0.20) {
+                    printf("      FAIL: not evenly spaced (%.3f oct error)\n", worst); bad++;
+                }
+            }
+        }
+
+        // BYPASS: dial 0 must be bit-identical to not having the feature.
+        {
+            VariableBW a, b;
+            bool same = true;
+            for (int blk = 0; blk < 60 && same; ++blk) {
+                for (int s = 0; s < FRAMELENGTH; ++s) {
+                    const float x = 0.4f * sinf(float(blk * FRAMELENGTH + s) * 0.02f);
+                    a.mInL.buffer()[s] = x; a.mInR.buffer()[s] = x;
+                    b.mInL.buffer()[s] = x; b.mInR.buffer()[s] = x;
+                }
+                fill(a.mFreqIn, 900.f); fill(a.mBandwidthIn, .5f);
+                fill(a.mResonanceIn, .8f); fill(a.mLevelIn, 1.f); fill(a.mPeaksIn, 0.f);
+                fill(b.mFreqIn, 900.f); fill(b.mBandwidthIn, .5f);
+                fill(b.mResonanceIn, .8f); fill(b.mLevelIn, 1.f);   // Peaks untouched
+                a.process(); b.process();
+                for (int s = 0; s < FRAMELENGTH; ++s)
+                    if (a.mOutL.buffer()[s] != b.mOutL.buffer()[s]) { same = false; break; }
+            }
+            printf("  Peaks=0 bypass: %s\n", same ? "bit-identical" : "DIFFERS");
+            if (!same) { printf("      FAIL: Peaks=0 is not an exact bypass\n"); bad++; }
+        }
+
+        // STABILITY: full peaks + full resonance + wide band must stay bounded.
+        {
+            VariableBW d; int nf = 0; double pkv = 0;
+            unsigned seed = 22222;
+            for (int blk = 0; blk < 400; ++blk) {
+                fill(d.mFreqIn, 700.f); fill(d.mBandwidthIn, 1.f);
+                fill(d.mResonanceIn, 1.f); fill(d.mLevelIn, 1.f); fill(d.mPeaksIn, 1.f);
+                for (int s = 0; s < FRAMELENGTH; ++s) {
+                    seed = seed * 1103515245u + 12345u;
+                    const float x = 0.5f * (float((seed >> 9) & 0x7fff) / 16384.0f - 1.0f);
+                    d.mInL.buffer()[s] = x; d.mInR.buffer()[s] = x;
+                }
+                d.process();
+                for (int s = 0; s < FRAMELENGTH; ++s) {
+                    const float v = d.mOutL.buffer()[s];
+                    if (!std::isfinite(v)) nf++;
+                    pkv = std::max(pkv, double(fabsf(v)));
+                }
+            }
+            printf("  7 peaks + full res + widest band: peak %.3f, nonFinite %d\n", pkv, nf);
+            if (nf || pkv > 1.01) { printf("      FAIL: unbounded\n"); bad++; }
+        }
+        printf("peaks: %s (%d issues)\n", bad ? "FAIL" : "PASS", bad);
+        return bad ? 1 : 0;
     }
 
     if (!strcmp(argv[1], "phase")) {
