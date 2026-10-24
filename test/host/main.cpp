@@ -1,5 +1,5 @@
 // Variable Bandwidth Filter host verification.  Build:
-//   g++ -std=c++17 -O2 -ffast-math -Dprivate=public -Itest/host -Isrc \
+//   g++ -std=c++17 -O2 -ffast-math -fno-finite-math-only -Dprivate=public -Itest/host -Isrc \
 //       src/VariableBW.cpp test/host/main.cpp -o t
 //
 // Modes:
@@ -10,6 +10,11 @@
 //   stereo                 L/R identical, finite
 //   stab                   full res + wide band + noise → finite, bounded
 //   nan                    NaN input → finite output
+//   denorm                 no filter state stays denormal after the input stops (v0.4.1)
+//
+// -fno-finite-math-only (v0.4.1): Apple clang's -ffast-math deletes NaN
+// checks (sanitize's bit test, std::isfinite), so without it `nan` passes
+// whatever the engine does. The device's gcc keeps them.
 #include "VariableBW.h"
 #include "filter_response.h"
 #include <hal/fft.h>
@@ -17,6 +22,8 @@
 #include <cstring>
 #include <cstdlib>
 #include <cmath>
+#include <initializer_list>
+#include <cstdint>
 #include <vector>
 
 using namespace vbf;
@@ -481,6 +488,35 @@ int main(int argc, char **argv)
         printf("phase: corr @0=%+.3f @0.5=%+.3f @1=%+.3f  peaks=%.3f/%.3f/%.3f  nf=%ld  %s\n",
                c0,c5,c1,p0,p5,p1,nf0+nf5+nf1, ok?"PASS":"FAIL");
         return ok?0:1;
+    }
+
+    if (!strcmp(argv[1], "denorm")) {
+        auto den = [](float x) { uint32_t u; memcpy(&u, &x, 4); return (u & 0x7F800000u) == 0 && (u & 0x007FFFFFu) != 0; };
+        long worst = 0;
+        for (float res : {0.0f, 0.5f, 0.9f}) for (float peaks : {0.0f, 1.0f}) {
+            VariableBW d;
+            fill(d.mFreqIn, 500.0f); fill(d.mBandwidthIn, 0.5f); fill(d.mResonanceIn, res);
+            fill(d.mLevelIn, 1.0f); fill(d.mPeaksIn, peaks);
+            long t = 0, denBlocks = 0;
+            for (int b = 0; b < 375 * 40; ++b) {
+                const bool sig = b < 375 * 10;
+                for (int s = 0; s < FRAMELENGTH; ++s, ++t) {
+                    const float x = sig ? 0.3f * sinf(0.05f * float(t)) : 0.0f;
+                    d.mInL.buffer()[s] = x; d.mInR.buffer()[s] = x;
+                }
+                d.process();
+                if (sig) continue;
+                int n = den(d.mIc1L_L) + den(d.mIc2L_L) + den(d.mIc1H_L) + den(d.mIc2H_L)
+                      + den(d.mIc1L_R) + den(d.mIc2L_R) + den(d.mIc1H_R) + den(d.mIc2H_R);
+                for (int i = 0; i < kMaxInner; ++i)
+                    n += den(d.mInnerIc1L[i]) + den(d.mInnerIc2L[i]) + den(d.mInnerIc1R[i]) + den(d.mInnerIc2R[i]);
+                if (n) ++denBlocks;
+            }
+            printf("  res %.1f peaks %.0f: blocks of silence with a denormal state: %ld of %d\n", res, peaks, denBlocks, 375 * 30);
+            if (denBlocks > worst) worst = denBlocks;
+        }
+        printf("denorm: %s\n", worst ? "FAIL" : "PASS");
+        return worst ? 1 : 0;
     }
 
     fprintf(stderr, "unknown mode\n");

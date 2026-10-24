@@ -17,6 +17,18 @@ static inline float sanitize(float x)
     return ((v.u & 0x7F800000u) == 0x7F800000u) ? 0.0f : x;
 }
 
+// Denormal guard (v0.4.1, as Resonant EQ 0.6.2). After the input stops, the
+// Cytomic SVF states settle into a tiny limit cycle in the DENORMAL range and
+// never reach zero (host: all 8 series states for an entire 30 s silence, up
+// to 28 with Peaks up). If the device's VFP handles denormals slowly, the unit
+// costs more in silence than playing. Below 1e-30 (−600 dB) is zero for every
+// purpose; applied to each state once per block. A self-oscillating edge
+// (Resonance 1) never decays this far, so it is untouched.
+static inline float flushTiny(float x)
+{
+    return (x > -1e-30f && x < 1e-30f) ? 0.0f : x;
+}
+
 static inline float softLimit(float x)
 {
     const float T  = 0.9f;
@@ -251,8 +263,16 @@ void VariableBW::process()
         lv += lvStep;
     }
 
-    mIc1L_L = ic1Ll; mIc2L_L = ic2Ll; mIc1H_L = ic1Hl; mIc2H_L = ic2Hl;
-    mIc1L_R = ic1Lr; mIc2L_R = ic2Lr; mIc1H_R = ic1Hr; mIc2H_R = ic2Hr;
+    mIc1L_L = flushTiny(ic1Ll); mIc2L_L = flushTiny(ic2Ll);
+    mIc1H_L = flushTiny(ic1Hl); mIc2H_L = flushTiny(ic2Hl);
+    mIc1L_R = flushTiny(ic1Lr); mIc2L_R = flushTiny(ic2Lr);
+    mIc1H_R = flushTiny(ic1Hr); mIc2H_R = flushTiny(ic2Hr);
+    for (int i = 0; i < kMaxInner; ++i) {        // all of them: a peak that just
+        mInnerIc1L[i] = flushTiny(mInnerIc1L[i]); // faded out keeps ringing down
+        mInnerIc2L[i] = flushTiny(mInnerIc2L[i]);
+        mInnerIc1R[i] = flushTiny(mInnerIc1R[i]);
+        mInnerIc2R[i] = flushTiny(mInnerIc2R[i]);
+    }
     mLastLevel = level;
 }
 

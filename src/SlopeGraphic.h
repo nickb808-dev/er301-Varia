@@ -67,13 +67,18 @@ namespace vbf
     static constexpr float kDbMax   = 36.0f;      // covers the self-osc peak
     static constexpr float kDbToPx  = 1.0f / (kDbMax - kDbMin);
 
-    inline void addPix(int w, int h, int x, int y, int amt)
+    // "At least this bright" (v0.4.1, as Resonant EQ 0.6.4). Until 0.4.0
+    // every layer ADDED, and under the -1/frame fade anything drawn each
+    // frame climbs to 15: the curve's crest was indistinguishable from its
+    // body, the "dim" edge ticks were full, and the Peaks ticks — meant to
+    // brighten with each peak's gain as it fades in, like the audio — jumped
+    // straight to full. With max() each element holds its own level; a
+    // moving curve still leaves its fading trail.
+    inline void litPix(int w, int h, int x, int y, int level)
     {
       if (x < 0 || x >= w || y < 0 || y >= h) return;
-      int idx = y * w + x;
-      int b = mPixels[idx] + amt;
-      if (b > 15) b = 15;
-      mPixels[idx] = (uint8_t)b;
+      uint8_t &p = mPixels[y * w + x];
+      if (p < level) p = (uint8_t)level;
     }
 
     // x pixel column for a given frequency (log axis).  logf allowed on am335x.
@@ -125,15 +130,15 @@ namespace vbf
           if (prevY < 0) prevY = y;
           int y0 = prevY < y ? prevY : y;
           int y1 = prevY < y ? y : prevY;
-          for (int yy = y0; yy <= y1; yy++) addPix(w, h, x, yy, 10);  // curve body
-          addPix(w, h, x, y, 5);                                      // bright crest
+          for (int yy = y0; yy <= y1; yy++) litPix(w, h, x, yy, 10);  // curve body
+          litPix(w, h, x, y, 15);                                     // bright crest
           prevY = y;
         }
 
         // Dim edge ticks at fL / fH (bottom two rows) so the band reads clearly.
         int xL = freqToX(w, fL), xH = freqToX(w, fH);
-        addPix(w, h, xL, 0, 6); addPix(w, h, xL, 1, 4);
-        addPix(w, h, xH, 0, 6); addPix(w, h, xH, 1, 4);
+        litPix(w, h, xL, 0, 6); litPix(w, h, xL, 1, 4);
+        litPix(w, h, xH, 0, 6); litPix(w, h, xH, 1, 4);
 
         // Interior PEAKS get their own ticks, ONE row tall and brightness
         // scaled by the peak's gain — so the newest peak fades IN on the
@@ -145,9 +150,9 @@ namespace vbf
         {
           const float g = inG[i];
           if (g <= 0.001f) continue;
-          int amt = (int)(g * 7.0f + 0.5f);
+          int amt = (int)(g * 7.0f + 0.5f);              // 1..7: fades in with g
           if (amt < 1) amt = 1;
-          addPix(w, h, freqToX(w, inHz[i]), 0, amt);
+          litPix(w, h, freqToX(w, inHz[i]), 0, amt);
         }
 
         // Stereo peak phase: a short horizontal "flag" off each edge crest —
@@ -171,8 +176,8 @@ namespace vbf
             const int xc = freqToX(w, fe);
             const int yc = (int)(t * (h - 1) + 0.5f);
             for (int j = 1; j <= len; j++) {
-              addPix(w, h, xc + j * dir, yc,     10);      // flag (2 px tall)
-              addPix(w, h, xc + j * dir, yc - 1,  5);
+              litPix(w, h, xc + j * dir, yc,     10);      // flag (2 px tall)
+              litPix(w, h, xc + j * dir, yc - 1,  5);
             }
           }
         }

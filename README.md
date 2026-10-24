@@ -6,7 +6,20 @@ with an added **resonance** that emphasises the two band edges and, at the top o
 its range, self-oscillates. Stereo in, stereo out.
 
 Package name on the ER-301: **Varia** · folder on disk: `variable-bw/` ·
-internal C++ namespace: `vbf`.
+internal C++ namespace: `vbf` · version **0.4.1**.
+
+### What's new in 0.4.1
+
+The sound is unchanged.
+
+- **No CPU creep in silence.** When the input stopped, the filters never quite
+  reached zero: they settled into an endless flicker of "denormal" numbers,
+  so small that some processors slow right down on them. They now snap to
+  exactly zero below −600 dB. A self-oscillating edge is never affected.
+- **The scope shows its intended brightness.** The curve's bright crest now
+  stands out from its body, the band-edge ticks are dim as intended, and each
+  Peaks tick brightens as that peak fades in, matching what you hear. Before,
+  everything drawn every frame maxed out.
 
 ---
 
@@ -113,7 +126,7 @@ Requires the ER-301 SDK and Docker (cross-compiles to am335x). From the
 make docker-image                     # first time only (shared image)
 make swig-docker  ER301_SDK=~/er-301  # generate the SWIG Lua wrapper
 make docker-build ER301_SDK=~/er-301  # cross-compile the .so
-make pkg                              # → build/am335x/varia-0.3.0.pkg
+make pkg                              # → build/am335x/varia-0.4.1.pkg
 ```
 
 Copy the resulting `.pkg` to the ER-301's SD card (`ER-301/packages/`) and load
@@ -125,7 +138,7 @@ The DSP and the scope's curve math are verified off-device (graphics only render
 on the emulator/hardware, but the sampled magnitude is host-testable):
 
 ```bash
-g++ -std=c++17 -O2 -ffast-math -Dprivate=public -Itest/host -Isrc \
+g++ -std=c++17 -O2 -ffast-math -fno-finite-math-only -Dprivate=public -Itest/host -Isrc \
     src/VariableBW.cpp test/host/main.cpp -o t
 ./t curve      # curve band-limited, centerd at √(fL·fH), dual edges, finite
 ./t center     # peak tracks Freq
@@ -135,13 +148,18 @@ g++ -std=c++17 -O2 -ffast-math -Dprivate=public -Itest/host -Isrc \
 ./t phase      # stereo phase decorrelates L/R (corr 1 → 0 at ±1); bounded
 ./t stab       # sweep + full res + wide + noise → finite, bounded
 ./t nan        # NaN input → finite output
+./t denorm     # no filter state stays denormal after the input stops
 ```
+
+`-fno-finite-math-only` matters: Apple clang's `-ffast-math` deletes NaN
+checks, so without it a NaN test passes no matter what.
 
 ---
 
 ## Status
 
-**v0.3.0** — host-verified and running on hardware. Freq / Bandwidth / Resonance,
+**v0.4.1** — host-verified (0.3.x running on hardware; 0.4.x Peaks and the
+0.4.1 fixes await the device). Freq / Bandwidth / Resonance,
 the slope scope (with the bandwidth formula and phase flags), the 20 Hz dial, and
 the stereo peak-Phase control are all in place.
 
